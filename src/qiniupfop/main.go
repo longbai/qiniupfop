@@ -4,62 +4,45 @@ import (
 	"flag"
 	"log"
 	"net/url"
-	"os"
 )
 
 import (
-	"github.com/qiniu/api/resumable/io"
+	"github.com/qiniu/api/conf"
+	"github.com/qiniu/api/rs"
 )
 
+type pfopRet struct {
+	PersistentId string `json:"persistentId"`
+	Code         int    `json:"code"`
+	Error        string `json:"error"`
+}
+
 func main() {
-	file := flag.String("f", "", "file path")
+	bucket := flag.String("b", "", "bucket")
+	key := flag.String("k", "", "file key")
 	accessKey := flag.String("ak", "", "access key")
 	secretKey := flag.String("sk", "", "secret key")
 	pfop := flag.String("pfop", "", "pfop option")
-	notify := flag.String("u", "", "notify url")
-	custom := flag.String("x", "", "custom args foo=1&bar=2")
+	notify := flag.String("n", "", "notify url")
 	flag.Parse()
-	if *token == "" || *file == "" || *key == "" {
+	if *bucket == "" || *key == "" || *accessKey == "" || *accessKey == "" || *pfop == "" {
 		flag.PrintDefaults()
 		log.Fatalln("invalid args")
 		return
 	}
+	conf.ACCESS_KEY = *accessKey
+	conf.SECRET_KEY = *secretKey
 
-	f, err := os.Open(*file)
+	client := rs.New(nil)
+	param := url.Values{}
+	param.Set("bucket", *bucket)
+	param.Set("key", url.QueryEscape(*key))
+	param.Set("fops", url.QueryEscape(*pfop))
+	param.Set("notifyURL", url.QueryEscape(*notify))
+	var ret pfopRet
+	err := client.Conn.CallWithForm(nil, &ret, "http://api.qiniu.com/pfop/", param)
 	if err != nil {
-		log.Fatalln("file not exist")
-		return
+		log.Fatalln("error", err, ret)
 	}
-	stat, err := f.Stat()
-	if err != nil || stat.IsDir() {
-		log.Fatalln("invalid file")
-		return
-	}
-
-	blockNotify := func(blkIdx int, blkSize int, ret *io.BlkputRet) {
-		log.Println("size", stat.Size(), "block id", blkIdx, "offset", ret.Offset)
-	}
-
-	params := map[string]string{}
-	extra := &io.PutExtra{
-		ChunkSize: 8192,
-		Notify:    blockNotify,
-		Params:    params,
-	}
-	if custom != nil && *custom != "" {
-		values, err := url.ParseQuery(*custom)
-		if err != nil {
-			log.Fatalln(err.Error())
-			return
-		}
-		for k, v := range values {
-			params["x:"+k] = v[0]
-		}
-		extra.Params = params
-	}
-	var ret io.PutRet
-	err = io.PutFile(nil, &ret, *token, *key, *file, extra)
-	if err != nil {
-		log.Fatalln(err)
-	}
+	log.Println("id", ret.PersistentId)
 }
