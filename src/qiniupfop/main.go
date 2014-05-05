@@ -36,9 +36,9 @@ func main() {
 	client := rs.New(nil)
 	param := url.Values{}
 	param.Set("bucket", *bucket)
-	param.Set("key", url.QueryEscape(*key))
-	param.Set("fops", url.QueryEscape(*pfop))
-	param.Set("notifyURL", url.QueryEscape(*notify))
+	param.Set("key", *key)
+	param.Set("fops", *pfop)
+	param.Set("notifyURL", *notify)
 	var ret pfopRet
 	err := client.Conn.CallWithForm(nil, &ret, "http://api.qiniu.com/pfop/", param)
 	if err != nil {
