@@ -90,11 +90,15 @@ func main() {
 		log.Fatalln("invalid args")
 		return
 	}
+	notifyUrl := *notify
+	if notifyUrl == "" {
+		notifyUrl = "fakenotify.com"
+	}
 	conf.ACCESS_KEY = *accessKey
 	conf.SECRET_KEY = *secretKey
 	ops := buildOps(*convert, *saveas)
 	if *file != "" {
-		token := genToken(*bucket, ops, *notify)
+		token := genToken(*bucket, ops, notifyUrl)
 		ret, err := put(token, *key, *file)
 		if err != nil {
 			log.Fatalln("put error", err, ret)
@@ -103,7 +107,7 @@ func main() {
 		log.Println("put ret", ret.Key)
 		return
 	}
-	ret, err := pfop(ops, *bucket, *key, *notify)
+	ret, err := pfop(ops, *bucket, *key, notifyUrl)
 	if err != nil {
 		log.Fatalln("pfop error", err, ret)
 		return
