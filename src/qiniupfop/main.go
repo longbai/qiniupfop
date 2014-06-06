@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"flag"
-	"log"
+	"fmt"
 	"net/url"
 	"os"
 )
@@ -26,8 +26,10 @@ func pfop(pfops, bucket, key, notifyUrl string) (ret pfopRet, err error) {
 	param.Set("bucket", bucket)
 	param.Set("key", key)
 	param.Set("fops", pfops)
-	param.Set("notifyURL", notifyUrl)
-	err = client.Conn.CallWithForm(nil, &ret, "http://api.qiniu.com/pfop/", param)
+	if notifyUrl != "" {
+		param.Set("notifyURL", notifyUrl)
+	}
+	err = client.Conn.CallWithForm(nil, &ret, "http://api.qiniu.com/pfop", param)
 	return
 }
 
@@ -39,36 +41,46 @@ func buildOps(convert, saveas string) string {
 	return pfops
 }
 
-func genToken(bucket, fops, notifyUrl string) string {
+func genToken(bucket, fops, notifyUrl, pipeline string) string {
 	policy := rs.PutPolicy{
-		Scope:               bucket,
-		PersistentNotifyUrl: notifyUrl,
-		PersistentOps:       fops,
+		Scope:         bucket,
+		PersistentOps: fops,
+
+		ReturnBody: `{"persistentId": $(persistentId)}`,
 	}
+	if notifyUrl != "" {
+		policy.PersistentNotifyUrl = notifyUrl
+	}
+	if pipeline != "" {
+		policy.PersistentPipeline = pipeline
+	}
+
 	return policy.Token(nil)
 }
 
-func put(token, key, file string) (ret io.PutRet, err error) {
+func put(token, key, file string) (ret pfopRet, err error) {
 	f, err := os.Open(file)
 	if err != nil {
-		log.Fatalln("file not exist")
+		fmt.Fprintln(os.Stderr, "file not exist")
+		os.Exit(1)
 		return
 	}
 	stat, err := f.Stat()
 	if err != nil || stat.IsDir() {
-		log.Fatalln("invalid file")
+		fmt.Fprintln(os.Stderr, "invalid file")
+		os.Exit(1)
 		return
 	}
 
-	blockNotify := func(blkIdx int, blkSize int, ret *io.BlkputRet) {
-		log.Println("size", stat.Size(), "block id", blkIdx, "offset", ret.Offset)
-	}
+	// blockNotify := func(blkIdx int, blkSize int, ret *io.BlkputRet) {
+	// 	fmt.Println("size", stat.Size(), "block id", blkIdx, "offset", ret.Offset)
+	// }
 
 	params := map[string]string{}
 	extra := &io.PutExtra{
 		ChunkSize: 8192,
-		Notify:    blockNotify,
-		Params:    params,
+		// Notify:    blockNotify,
+		Params: params,
 	}
 
 	err = io.PutFile(nil, &ret, token, key, file, extra)
@@ -83,34 +95,35 @@ func main() {
 	secretKey := flag.String("sk", "", "secret key")
 	convert := flag.String("c", "", "pfop single convert option avthumb/m3u8/segtime/10/vcodec/libx264/s/320x240")
 	notify := flag.String("n", "", "notify url")
+	pipeline := flag.String("p", "", "pipline")
 	saveas := flag.String("o", "", "output key, outputBucket:key")
 	flag.Parse()
 	if *bucket == "" || *key == "" || *accessKey == "" || *accessKey == "" || *convert == "" {
 		flag.PrintDefaults()
-		log.Fatalln("invalid args")
+		fmt.Fprintln(os.Stderr, "invalid args")
+		os.Exit(1)
 		return
 	}
-	notifyUrl := *notify
-	if notifyUrl == "" {
-		notifyUrl = "fakenotify.com"
-	}
+
 	conf.ACCESS_KEY = *accessKey
 	conf.SECRET_KEY = *secretKey
 	ops := buildOps(*convert, *saveas)
 	if *file != "" {
-		token := genToken(*bucket, ops, notifyUrl)
+		token := genToken(*bucket, ops, *notify, *pipeline)
 		ret, err := put(token, *key, *file)
 		if err != nil {
-			log.Fatalln("put error", err, ret)
+			fmt.Fprintln(os.Stderr, "put error", err, ret)
+			os.Exit(1)
 			return
 		}
-		log.Println("put ret", ret.Key)
+		fmt.Fprintln(os.Stdout, ret.PersistentId)
 		return
 	}
-	ret, err := pfop(ops, *bucket, *key, notifyUrl)
+	ret, err := pfop(ops, *bucket, *key, *notify)
 	if err != nil {
-		log.Fatalln("pfop error", err, ret)
+		fmt.Fprintln(os.Stderr, "pfop error", err, ret)
+		os.Exit(1)
 		return
 	}
-	log.Println("pfop id", ret.PersistentId)
+	fmt.Fprintln(os.Stdout, ret.PersistentId)
 }
