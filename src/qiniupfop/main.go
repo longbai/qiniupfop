@@ -20,7 +20,7 @@ type pfopRet struct {
 	Error        string `json:"error"`
 }
 
-func pfop(pfops, bucket, key, notifyUrl string) (ret pfopRet, err error) {
+func pfop(pfops, bucket, key, notifyUrl, pipeline string) (ret pfopRet, err error) {
 	client := rs.New(nil)
 	param := url.Values{}
 	param.Set("bucket", bucket)
@@ -28,6 +28,9 @@ func pfop(pfops, bucket, key, notifyUrl string) (ret pfopRet, err error) {
 	param.Set("fops", pfops)
 	if notifyUrl != "" {
 		param.Set("notifyURL", notifyUrl)
+	}
+	if pipeline != "" {
+		param.Set("pipeline", pipeline)
 	}
 	err = client.Conn.CallWithForm(nil, &ret, "http://api.qiniu.com/pfop", param)
 	return
@@ -119,7 +122,7 @@ func main() {
 		fmt.Fprintln(os.Stdout, ret.PersistentId)
 		return
 	}
-	ret, err := pfop(ops, *bucket, *key, *notify)
+	ret, err := pfop(ops, *bucket, *key, *notify, *pipeline)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "pfop error", err, ret)
 		os.Exit(1)
